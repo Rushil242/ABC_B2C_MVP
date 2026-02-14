@@ -71,16 +71,18 @@ const ReturnHistory = () => {
                       <td className="px-4 py-3">{item.itr_type}</td>
                       <td className="px-4 py-3 text-center">
                         <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${item.status === "Filed"
-                            ? "bg-blue-900/30 text-blue-400"
-                            : item.status === "Processed"
-                              ? "bg-green-900/30 text-green-400"
-                              : "bg-secondary text-muted-foreground"
+                          ? "bg-blue-900/30 text-blue-400"
+                          : item.status === "Processed"
+                            ? "bg-green-900/30 text-green-400"
+                            : "bg-secondary text-muted-foreground"
                           }`}>
                           {item.status}
                         </span>
                       </td>
                       <td className="px-4 py-3">{item.filing_date}</td>
-                      <td className="px-4 py-3 text-right font-medium">{item.refund_amount}</td>
+                      <td className="px-4 py-3 text-right font-medium">
+                        ₹{Number(item.refund_amount).toLocaleString()}
+                      </td>
                     </tr>
                   ))
                 )}

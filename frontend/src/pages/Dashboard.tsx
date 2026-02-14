@@ -81,7 +81,7 @@ const Dashboard = () => {
   const missedOpportunities = opportunities.map((op: any) => ({
     ay: op.ay || "2024-25", // Default if missing
     opportunity: op.title,
-    savings: `â‚¹${op.potential_savings.toLocaleString()}`
+    savings: `₹${op.potential_savings.toLocaleString()}`
   }));
 
   const probableProblems = risks.map((r: any) => ({
