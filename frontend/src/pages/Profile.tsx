@@ -32,12 +32,32 @@ const Profile = () => {
     const fetchProfile = async () => {
       try {
         const data = await api.getProfile();
+
+        // Calculate age from DOB
+        let calculatedAge = "N/A";
+        if (data.personal_info.dob && data.personal_info.dob !== "N/A") {
+          try {
+            // DOB format from backend: YYYY-MM-DD (e.g., "1999-01-03")
+            const dobDate = new Date(data.personal_info.dob);
+            const today = new Date();
+            let age = today.getFullYear() - dobDate.getFullYear();
+            const monthDiff = today.getMonth() - dobDate.getMonth();
+
+            // Adjust age if birthday hasn't occurred yet this year
+            if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dobDate.getDate())) {
+              age--;
+            }
+            calculatedAge = age.toString();
+          } catch (e) {
+            console.error("Error calculating age:", e);
+          }
+        }
+
         setProfileData({
           fullName: data.personal_info.name,
           pan: data.personal_info.pan,
           dob: data.personal_info.dob || "N/A",
-          // Calculate Age
-          age: data.personal_info.dob ? new Date().getFullYear() - new Date(data.personal_info.dob.split('-').reverse().join('-')).getFullYear() : "N/A",
+          age: calculatedAge,
           address: data.address,
           phone: data.phone,
           email: data.personal_info.email,
