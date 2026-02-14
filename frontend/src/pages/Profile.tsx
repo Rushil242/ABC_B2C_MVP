@@ -1,7 +1,9 @@
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { User, MapPin, Phone, Mail, Briefcase, Shield } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import { api } from "@/api/client";
 
 const profileData = {
   fullName: "Rajesh Kumar Sharma",
@@ -23,7 +25,41 @@ const profileData = {
 };
 
 const Profile = () => {
-  const pan = sessionStorage.getItem("abc_pan") || profileData.pan;
+  const [profileData, setProfileData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const data = await api.getProfile();
+        setProfileData({
+          fullName: data.personal_info.name,
+          pan: data.personal_info.pan,
+          dob: data.personal_info.dob || "N/A",
+          // Calculate Age
+          age: data.personal_info.dob ? new Date().getFullYear() - new Date(data.personal_info.dob.split('-').reverse().join('-')).getFullYear() : "N/A",
+          address: data.address,
+          phone: data.phone,
+          email: data.personal_info.email,
+          sourcesOfIncome: ["Salary", "House Property", "Other Sources"], // Placeholder or derived from ITR
+          aoDetails: data.ao_details
+        });
+      } catch (error) {
+        console.error("Failed to fetch profile", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProfile();
+  }, []);
+
+  if (loading) {
+    return <div className="flex h-screen items-center justify-center dark bg-background text-foreground">Loading Profile...</div>;
+  }
+
+  if (!profileData) {
+    return <div className="flex h-screen items-center justify-center dark bg-background text-foreground">Failed to load profile.</div>;
+  }
 
   return (
     <div className="dark min-h-screen bg-background text-foreground">
@@ -57,7 +93,7 @@ const Profile = () => {
             </div>
             <div className="space-y-4">
               <InfoRow label="Full Name" value={profileData.fullName} />
-              <InfoRow label="PAN" value={pan} highlight />
+              <InfoRow label="PAN" value={profileData.pan} highlight />
               <InfoRow label="Date of Birth" value={profileData.dob} />
               <InfoRow label="Age" value={`${profileData.age} years`} />
             </div>
@@ -93,7 +129,7 @@ const Profile = () => {
               <h2 className="font-display text-lg font-semibold">Sources of Income</h2>
             </div>
             <div className="flex flex-wrap gap-2">
-              {profileData.sourcesOfIncome.map((source) => (
+              {profileData.sourcesOfIncome.map((source: string) => (
                 <span
                   key={source}
                   className="rounded-full border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-foreground"

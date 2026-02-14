@@ -1,15 +1,36 @@
 import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import api from "@/api/client";
 
-const notices = [
-  { type: "Notice", section: "143(1)", date: "15-Dec-2024", description: "Intimation under section 143(1) for AY 2024-25", status: "Pending" },
-  { type: "Notice", section: "139(9)", date: "10-Sep-2023", description: "Defective return notice for AY 2023-24", status: "Resolved" },
-  { type: "Order", section: "154", date: "20-Mar-2023", description: "Rectification order for AY 2022-23", status: "Completed" },
-  { type: "Notice", section: "245", date: "05-Jan-2022", description: "Set off of refund against demand for AY 2021-22", status: "Resolved" },
-];
+interface Notice {
+  category: string;
+  section: string;
+  date: string;
+  description: string;
+  status: string;
+  pdf_link: string;
+}
 
 const NoticeHistory = () => {
+  const [notices, setNotices] = useState<Notice[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        const data = await api.getNoticeHistory();
+        setNotices(data);
+      } catch (error) {
+        console.error("Failed to fetch notice history:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchHistory();
+  }, []);
+
   return (
     <div className="dark min-h-screen bg-background text-foreground">
       <Navbar isLoggedIn />
@@ -35,33 +56,41 @@ const NoticeHistory = () => {
                 </tr>
               </thead>
               <tbody>
-                {notices.map((item, i) => (
-                  <tr key={i} className="border-b border-border last:border-0 hover:bg-card/50 transition-colors">
-                    <td className="px-4 py-3">
-                      <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${
-                        item.type === "Notice"
-                          ? "bg-yellow-900/30 text-yellow-400"
-                          : "bg-blue-900/30 text-blue-400"
-                      }`}>
-                        {item.type}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 font-medium">{item.section}</td>
-                    <td className="px-4 py-3">{item.date}</td>
-                    <td className="px-4 py-3">{item.description}</td>
-                    <td className="px-4 py-3 text-center">
-                      <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                        item.status === "Pending"
-                          ? "bg-red-900/30 text-red-400"
-                          : item.status === "Resolved"
-                          ? "bg-green-900/30 text-green-400"
-                          : "bg-secondary text-muted-foreground"
-                      }`}>
-                        {item.status}
-                      </span>
-                    </td>
+                {loading ? (
+                  <tr>
+                    <td colSpan={5} className="text-center py-4 text-muted-foreground">Loading notices...</td>
                   </tr>
-                ))}
+                ) : notices.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="text-center py-4 text-muted-foreground">No notices found.</td>
+                  </tr>
+                ) : (
+                  notices.map((item, i) => (
+                    <tr key={i} className="border-b border-border last:border-0 hover:bg-card/50 transition-colors">
+                      <td className="px-4 py-3">
+                        <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${item.category === "Notice" || item.category === "Defective Notice"
+                            ? "bg-yellow-900/30 text-yellow-400"
+                            : "bg-blue-900/30 text-blue-400"
+                          }`}>
+                          {item.category}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-medium">{item.section}</td>
+                      <td className="px-4 py-3">{item.date}</td>
+                      <td className="px-4 py-3">{item.description}</td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${item.status === "Pending"
+                            ? "bg-red-900/30 text-red-400"
+                            : item.status === "Resolved"
+                              ? "bg-green-900/30 text-green-400"
+                              : "bg-secondary text-muted-foreground"
+                          }`}>
+                          {item.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -72,5 +101,4 @@ const NoticeHistory = () => {
     </div>
   );
 };
-
 export default NoticeHistory;

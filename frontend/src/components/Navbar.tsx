@@ -62,12 +62,15 @@ const Navbar = ({ isLoggedIn = false }: { isLoggedIn?: boolean }) => {
               >
                 Profile
               </Link>
-              <Link
-                to="/"
+              <button
+                onClick={() => {
+                  sessionStorage.clear();
+                  window.location.href = "/";
+                }}
                 className="rounded-md border border-gold/30 px-4 py-2 text-sm text-gold hover:bg-gold/10 transition-colors"
               >
                 Logout
-              </Link>
+              </button>
             </>
           ) : (
             <>

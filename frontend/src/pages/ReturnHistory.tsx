@@ -1,16 +1,36 @@
 import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import api from "@/api/client";
 
-const returns = [
-  { ay: "2024-25", itr: "ITR 2", status: "Filed", filingDate: "31-Jul-2024", refund: "₹18,500" },
-  { ay: "2023-24", itr: "ITR 1", status: "Processed", filingDate: "28-Jul-2023", refund: "₹12,000" },
-  { ay: "2022-23", itr: "ITR 1", status: "Processed", filingDate: "31-Jul-2022", refund: "—" },
-  { ay: "2021-22", itr: "ITR 1", status: "Processed", filingDate: "15-Mar-2022", refund: "₹8,200" },
-  { ay: "2020-21", itr: "ITR 1", status: "Processed", filingDate: "10-Jan-2021", refund: "—" },
-];
+interface ITRFiling {
+  ay: string;
+  itr_type: string;
+  status: string;
+  filing_date: string;
+  refund_amount: string;
+  ack_num: string;
+}
 
 const ReturnHistory = () => {
+  const [returns, setReturns] = useState<ITRFiling[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        const data = await api.getReturnHistory();
+        setReturns(data);
+      } catch (error) {
+        console.error("Failed to fetch return history:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchHistory();
+  }, []);
+
   return (
     <div className="dark min-h-screen bg-background text-foreground">
       <Navbar isLoggedIn />
@@ -36,23 +56,34 @@ const ReturnHistory = () => {
                 </tr>
               </thead>
               <tbody>
-                {returns.map((item, i) => (
-                  <tr key={i} className="border-b border-border last:border-0 hover:bg-card/50 transition-colors">
-                    <td className="px-4 py-3 font-medium text-gold">{item.ay}</td>
-                    <td className="px-4 py-3">{item.itr}</td>
-                    <td className="px-4 py-3 text-center">
-                      <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                        item.status === "Filed"
-                          ? "bg-blue-900/30 text-blue-400"
-                          : "bg-green-900/30 text-green-400"
-                      }`}>
-                        {item.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">{item.filingDate}</td>
-                    <td className="px-4 py-3 text-right font-medium">{item.refund}</td>
+                {loading ? (
+                  <tr>
+                    <td colSpan={5} className="text-center py-4 text-muted-foreground">Loading history...</td>
                   </tr>
-                ))}
+                ) : returns.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="text-center py-4 text-muted-foreground">No returns filed yet.</td>
+                  </tr>
+                ) : (
+                  returns.map((item, i) => (
+                    <tr key={i} className="border-b border-border last:border-0 hover:bg-card/50 transition-colors">
+                      <td className="px-4 py-3 font-medium text-gold">{item.ay}</td>
+                      <td className="px-4 py-3">{item.itr_type}</td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${item.status === "Filed"
+                            ? "bg-blue-900/30 text-blue-400"
+                            : item.status === "Processed"
+                              ? "bg-green-900/30 text-green-400"
+                              : "bg-secondary text-muted-foreground"
+                          }`}>
+                          {item.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">{item.filing_date}</td>
+                      <td className="px-4 py-3 text-right font-medium">{item.refund_amount}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

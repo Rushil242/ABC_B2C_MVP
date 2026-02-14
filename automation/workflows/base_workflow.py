@@ -52,6 +52,14 @@ class BaseWorkflow:
         
         print("[INFO] Analyzing page for login fields...")
         
+        # Pre-step: Check if we need to click "Login" button (common on homepage)
+        login_button = self.page.query_selector('a:has-text("Login"), button:has-text("Login")')
+        if login_button and login_button.is_visible():
+            print("[INFO] Found Login button, clicking...")
+            login_button.click()
+            self.page.wait_for_load_state("networkidle")
+            self.page.wait_for_timeout(2000)
+
         # Step 1: Enter username/PAN
         all_inputs = self.page.query_selector_all('input')
         username_field = None
@@ -171,7 +179,21 @@ class BaseWorkflow:
             self.login()
             self.execute()
         except Exception as e:
-            print(f"[ERROR] Workflow failed: {e}")
+            # Handle potential encoding errors in Windows terminals
+            try:
+                print(f"[ERROR] Workflow failed: {e}")
+            except UnicodeEncodeError:
+                print(f"[ERROR] Workflow failed: {e}".encode("utf-8", errors="ignore").decode("utf-8"))
+            
+            # Capture screenshot on failure
+            if self.page:
+                try:
+                    screenshot_path = f"{self.workflow_dir}/error_screenshot.png"
+                    self.page.screenshot(path=screenshot_path)
+                    print(f"[INFO] Error screenshot saved to {screenshot_path}")
+                except Exception as se:
+                    print(f"[ERROR] Failed to save screenshot: {se}")
+
             import traceback
             traceback.print_exc()
         finally:

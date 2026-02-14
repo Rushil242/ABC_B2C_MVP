@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ArrowLeft } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -11,7 +11,9 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import Navbar from "@/components/Navbar";
+
 import Footer from "@/components/Footer";
+import { api } from "@/api/client";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -25,7 +27,7 @@ const Login = () => {
 
   const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
@@ -44,8 +46,15 @@ const Login = () => {
       return;
     }
 
-    sessionStorage.setItem("abc_pan", upperPan);
-    navigate("/loading");
+    try {
+      const response = await api.login(upperPan, password);
+      sessionStorage.setItem("auth_token", response.access_token);
+      sessionStorage.setItem("abc_pan", upperPan); // Keep for legacy if needed
+      navigate("/loading");
+    } catch (err) {
+      console.error(err);
+      setError("Invalid credentials. For demo, use PAN: ABCDE1234F / Pass: demo123");
+    }
   };
 
   return (
@@ -154,6 +163,13 @@ const Login = () => {
               >
                 Login & Analyze
               </button>
+
+              <div className="mt-4 text-center text-sm">
+                <span className="text-muted-foreground">Don't have an account? </span>
+                <Link to="/register" className="text-gold hover:underline font-medium">
+                  Register here
+                </Link>
+              </div>
             </form>
 
             <p className="mt-6 text-center text-xs text-muted-foreground">

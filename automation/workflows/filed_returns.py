@@ -35,6 +35,18 @@ class FiledReturnsWorkflow(BaseWorkflow):
     
     def download_json_from_page(self, page_num):
         """Download all JSON files from current page"""
+        print(f"[INFO] Processing page {page_num}...")
+        print(f"[INFO] Current URL: {self.page.url}")
+        print(f"[INFO] Current Title: {self.page.title()}")
+        
+        # Debug Screenshot
+        try:
+            screenshot_path = f"{self.workflow_dir}/page_{page_num}_debug.png"
+            self.page.screenshot(path=screenshot_path)
+            print(f"[INFO] Saved debug screenshot to {screenshot_path}")
+        except Exception as e:
+            print(f"[ERROR] Failed to save screenshot: {e}")
+
         # Scroll through page
         last_height = self.page.evaluate("document.body.scrollHeight")
         scroll_position = 0
