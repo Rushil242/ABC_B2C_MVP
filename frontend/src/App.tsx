@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Loading from "./pages/Loading";
+import Questionnaire from "./pages/Questionnaire";
 
 import Dashboard from "./pages/Dashboard";
 import ReturnHistory from "./pages/ReturnHistory";
@@ -29,6 +30,7 @@ const App = () => (
           <Route path="/loading" element={<Loading />} />
 
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/questionnaire" element={<Questionnaire />} />
           <Route path="/return-history" element={<ReturnHistory />} />
           <Route path="/notice-history" element={<NoticeHistory />} />
           <Route path="/profile" element={<Profile />} />

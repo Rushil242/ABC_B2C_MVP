@@ -1,6 +1,6 @@
 
-from pydantic import BaseModel
-from typing import List, Optional
+from pydantic import BaseModel, validator
+from typing import List, Optional, Dict
 
 # Auth Schemas
 class LoginRequest(BaseModel):
@@ -19,6 +19,17 @@ class UserBase(BaseModel):
     name: Optional[str] = None
     email: Optional[str] = None
     dob: Optional[str] = None # Added
+    questionnaire_data: Optional[Dict] = None
+
+    @validator("questionnaire_data", pre=True)
+    def parse_questionnaire_data(cls, v):
+        if isinstance(v, str):
+            try:
+                import json
+                return json.loads(v)
+            except:
+                return {}
+        return v
 
 class UserCreate(UserBase):
     password: str

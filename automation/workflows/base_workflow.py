@@ -289,5 +289,7 @@ class BaseWorkflow:
 
             import traceback
             traceback.print_exc()
+            import sys
+            sys.exit(1)
         finally:
             self.cleanup()

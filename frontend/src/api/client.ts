@@ -21,16 +21,15 @@ client.interceptors.request.use((config) => {
 });
 
 export const api = {
-    login: async (pan: string, password: string) => {
+    login: async (pan: string, password: string, questionnaireData?: any) => {
         // Backend expects form-data for OAuth2PasswordRequestForm
         const formData = new FormData();
         formData.append('username', pan);
         formData.append('password', password);
 
-        // BUT our backend code also accepts JSON if we didn't use OAuth2PasswordRequestForm strictly?
-        // Actually, OAuth2PasswordRequestForm requires form-data.
-        // Let's check auth.py: `form_data: OAuth2PasswordRequestForm = Depends()`
-        // So we MUST send form data.
+        if (questionnaireData) {
+            formData.append('questionnaire_data', JSON.stringify(questionnaireData));
+        }
 
         const response = await client.post('/auth/login', formData, {
             headers: {
@@ -64,6 +63,10 @@ export const api = {
     },
     triggerSync: async (password: string) => {
         const response = await client.post("/sync/itr", { password });
+        return response.data;
+    },
+    updateProfileQuestionnaire: async (data: any) => {
+        const response = await client.put("/profile/questionnaire", { items: data });
         return response.data;
     },
 };

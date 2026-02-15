@@ -2,6 +2,7 @@ from workflows.filed_returns import FiledReturnsWorkflow
 from workflows.form_26as import Form26ASWorkflow
 from workflows.ais_download import AISDownloadWorkflow
 from workflows.eproceedings import EProceedingsWorkflow
+from workflows.verify_credentials import VerifyCredentialsWorkflow
 
 # Registry of all available workflows
 WORKFLOWS = {
@@ -9,6 +10,7 @@ WORKFLOWS = {
     'form_26as': Form26ASWorkflow,
     'ais_download': AISDownloadWorkflow,
     'eproceedings': EProceedingsWorkflow,
+    'verify_credentials': VerifyCredentialsWorkflow,
 }
 
 def list_workflows():

@@ -150,57 +150,7 @@ def process_itr_data(db: Session, pan: str, itr_json: dict):
             )
             db.add(new_itr)
         
-        # Run Rule Engine
-        
-        # 1. Fetch AIS Data for Risk Analysis (AY 2024-25 -> FY 2023-24)
-        ais_entries = []
-        try:
-            # Parse AY (e.g., "2024-25" -> 2024, or "2024" -> 2024)
-            if ay and ay != "Unknown":
-                # Clean AY (remove 'PAY ' prefix if any, mainly handling simple year)
-                ay_str = ay.split("-")[0].strip()
-                if ay_str.isdigit():
-                    ay_year = int(ay_str)
-                    fy_year = ay_year - 1
-                    fy = f"{fy_year}-{str(ay_year)[-2:]}"
-                    
-                    ais_records = db.query(models.AIS_Entry).filter(
-                        models.AIS_Entry.user_pan == pan,
-                        models.AIS_Entry.fy == fy
-                    ).all()
-                    
-                    # Convert SQLAlchemy objects to list of dicts
-                    for entry in ais_records:
-                        ais_entries.append({
-                            "informationCategory": entry.category,
-                            "amount": entry.amount,
-                            "description": entry.description,
-                            "source": entry.source
-                        })
-        except Exception as e:
-            logging.warning(f"Could not fetch AIS data for Rule Engine: {e}")
 
-        risks = rule_engine.evaluate_risks(itr_json, ais_entries)
-        for risk in risks:
-            # Dedup: Check if this risk title exists for this user/AY?
-            exists = db.query(models.Risk).filter(
-                models.Risk.user_pan == pan,
-                models.Risk.ay == ay,
-                models.Risk.title == risk['title']
-            ).first()
-            if not exists:
-                db.add(models.Risk(user_pan=pan, ay=ay, **risk))
-            
-        opps = rule_engine.evaluate_opportunities(itr_json)
-        for opp in opps:
-            exists = db.query(models.Opportunity).filter(
-                models.Opportunity.user_pan == pan,
-                models.Opportunity.ay == ay,
-                models.Opportunity.title == opp['title']
-            ).first()
-            if not exists:
-                db.add(models.Opportunity(user_pan=pan, ay=ay, **opp))
-        
         # 4. Generate Advance Tax Schedule (New)
         adv_tax_schedule = rule_engine.evaluate_tax_calendar(itr_json)
         for tax in adv_tax_schedule:
@@ -221,9 +171,89 @@ def process_itr_data(db: Session, pan: str, itr_json: dict):
                 db.add(models.AdvanceTax(user_pan=pan, **tax))
 
         db.commit()
+        
+        # 5. Run Rule Engine for User (Now Separated)
+        run_rules_for_user(db, pan)
+        
         return True, "Processed successfully"
     
     except Exception as e:
         logging.error(f"Error processing ITR: {e}")
         db.rollback()
         return False, str(e)
+
+def run_rules_for_user(db: Session, pan: str):
+    """
+    Runs the Rule Engine for a specific user based on their latest ITR and AIS data.
+    Can be triggered on Login or after Data Sync.
+    """
+    try:
+        # 1. Fetch Latest ITR
+        itr_record = db.query(models.ITR_Filing).filter(models.ITR_Filing.user_pan == pan).order_by(models.ITR_Filing.ay.desc()).first()
+        if not itr_record:
+            logging.warning(f"No ITR found for {pan}, skipping rule execution.")
+            return
+
+        itr_json = json.loads(itr_record.raw_data)
+        ay = itr_record.ay
+
+        # 2. Fetch AIS Data
+        ais_entries = []
+        try:
+             if ay and ay != "Unknown":
+                ay_str = ay.split("-")[0].strip()
+                if ay_str.isdigit():
+                    ay_year = int(ay_str)
+                    fy_year = ay_year - 1
+                    fy = f"{fy_year}-{str(ay_year)[-2:]}"
+                    
+                    ais_records = db.query(models.AIS_Entry).filter(
+                        models.AIS_Entry.user_pan == pan,
+                        models.AIS_Entry.fy == fy
+                    ).all()
+                    
+                    for entry in ais_records:
+                        ais_entries.append({
+                            "informationCategory": entry.category,
+                            "amount": entry.amount,
+                            "description": entry.description,
+                            "source": entry.source
+                        })
+        except Exception as e:
+            logging.warning(f"Could not fetch AIS for rules: {e}")
+
+        # 3. Run Rule Engine - Risks
+        risks = rule_engine.evaluate_risks(itr_json, ais_entries)
+        
+        # Clear old risks/ops for this AY to avoid stale data? 
+        # Or just upsert? Let's upsert for now to be safe.
+        # Ideally, we should maybe clear previous AI suggestions if re-running?
+        
+        for risk in risks:
+            exists = db.query(models.Risk).filter(
+                models.Risk.user_pan == pan,
+                models.Risk.ay == ay,
+                models.Risk.title == risk['title']
+            ).first()
+            if not exists:
+                db.add(models.Risk(user_pan=pan, ay=ay, **risk))
+            else:
+                 # Update logic?
+                 pass
+
+        # 4. Run Rule Engine - Opportunities
+        opps = rule_engine.evaluate_opportunities(itr_json)
+        for opp in opps:
+            exists = db.query(models.Opportunity).filter(
+                models.Opportunity.user_pan == pan,
+                models.Opportunity.ay == ay,
+                models.Opportunity.title == opp['title']
+            ).first()
+            if not exists:
+                db.add(models.Opportunity(user_pan=pan, ay=ay, **opp))
+        
+        db.commit()
+        logging.info(f"Rule Engine executed for {pan}")
+
+    except Exception as e:
+        logging.error(f"Rule Execution Failed for {pan}: {e}")

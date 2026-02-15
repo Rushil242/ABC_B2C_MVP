@@ -1,5 +1,5 @@
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Form
 from sqlalchemy.orm import Session
 from .. import models, schemas, database, auth_utils
 from fastapi.security import OAuth2PasswordRequestForm
@@ -11,7 +11,7 @@ router = APIRouter(
 )
 
 @router.post("/login", response_model=schemas.Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(database.get_db)):
+def login(form_data: OAuth2PasswordRequestForm = Depends(), questionnaire_data: str = Form(None), db: Session = Depends(database.get_db)):
     # 1. DEMO MODE CHECK
     if form_data.username == "ABCDE1234F" and form_data.password == "demo123":
         # Ensure Demo User Exists in DB with Frontend required fields
@@ -123,15 +123,33 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         access_token = auth_utils.create_access_token(data={"sub": user.pan})
         return {"access_token": access_token, "token_type": "bearer"}
 
-    # 2. REAL AUTH (Placeholder for Scraper integration)
-    user = db.query(models.User).filter(models.User.pan == form_data.username).first()
-    if not user or not auth_utils.verify_password(form_data.password, user.password_hash):
+    # 2. LOCAL AUTH ONLY (Login)
+    user = db.query(models.User).filter(models.User.pan == form_data.username.upper()).first()
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect PAN or password",
+            detail="User not registered. Please register first.",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
+    if not auth_utils.verify_password(form_data.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # 3. TRIGGER RULE ENGINE (Refresh Risks/Opportunities on Login)
+    from ..services import itr_service
+    # Run in background to not block login? Or synchronously? 
+    # Synchronously is better for immediate dashboard update if fast (<1s).
+    itr_service.run_rules_for_user(db, user.pan)
+    
+    # Update Questionnaire Data if provided
+    if questionnaire_data:
+         user.questionnaire_data = questionnaire_data
+         db.commit()
+
     access_token_expires = timedelta(minutes=auth_utils.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = auth_utils.create_access_token(
         data={"sub": user.pan}, expires_delta=access_token_expires
@@ -139,7 +157,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/register", response_model=schemas.Token)
-def register(user: schemas.UserCreate, db: Session = Depends(database.get_db)):
+def register(background_tasks: BackgroundTasks, user: schemas.UserCreate, db: Session = Depends(database.get_db)):
     # 1. Check if user already exists
     db_user = db.query(models.User).filter(models.User.pan == user.pan).first()
     if db_user:
@@ -147,22 +165,90 @@ def register(user: schemas.UserCreate, db: Session = Depends(database.get_db)):
             status_code=400,
             detail="User with this PAN already exists"
         )
+    
+    # 2. VERIFY ITR CREDENTIALS (Using Automation)
+    import subprocess
+    import os
+    import json
+    
+    CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+    BACKEND_DIR = os.path.dirname(CURRENT_DIR)
+    PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
+    AUTOMATION_DIR = os.path.join(PROJECT_ROOT, "automation")
+    
+    env = os.environ.copy()
+    env["INCOME_TAX_USERNAME"] = user.pan.upper()
+    env["INCOME_TAX_PASSWORD"] = user.password
+
+    print(f"Verifying ITR credentials for {user.pan}...")
+    try:
+        # Run verify_credentials workflow
+        result = subprocess.run(
+            ["python", "run_workflow.py", "verify_credentials", "--headless"],
+            cwd=AUTOMATION_DIR,
+            capture_output=True,
+            text=True,
+            env=env
+        )
+        
+        if result.returncode != 0:
+            print(f"VERIFICATION FAILED: {result.stderr}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="ITR Verification Failed: Invalid PAN or Password.",
+            )
+        
+        # Parse stdout for [DATA] JSON
+        scraped_name = None
+        for line in result.stdout.splitlines():
+            if line.startswith("[DATA]"):
+                try:
+                    data = json.loads(line.replace("[DATA]", "").strip())
+                    if data.get("status") == "success":
+                        scraped_name = data.get("name")
+                except json.JSONDecodeError:
+                    pass
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"AUTH ERROR: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Verification failed due to internal error",
+        )
 
     try:
-        # 2. Create new user
+        # 3. Create new user with Questionnaire Data
         hashed_password = auth_utils.get_password_hash(user.password)
+        
+        # Use scraped name if provided name is null (which it is from frontend)
+        final_name = user.name
+        if not final_name and scraped_name:
+            final_name = scraped_name
+            
+        # Serialize questionnaire data if present
+        q_data_str = None
+        if user.questionnaire_data:
+            q_data_str = json.dumps(user.questionnaire_data)
+            
         new_user = models.User(
             pan=user.pan,
-            name=user.name,
+            name=final_name,
             email=user.email,
             dob=user.dob,
-            password_hash=hashed_password
+            password_hash=hashed_password,
+            questionnaire_data=q_data_str
         )
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
         
-        # 3. Auto-login (Create Token)
+        # 4. Trigger Sync
+        from .sync import bg_sync_workflow
+        background_tasks.add_task(bg_sync_workflow, new_user.pan, user.password)
+        
+        # 5. Auto-login (Create Token)
         access_token_expires = timedelta(minutes=auth_utils.ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = auth_utils.create_access_token(
             data={"sub": new_user.pan}, expires_delta=access_token_expires

@@ -12,6 +12,7 @@ class User(Base):
     password_hash = Column(String)
     email = Column(String)
     dob = Column(String) # DD-MM-YYYY format to match frontend
+    questionnaire_data = Column(Text) # JSON string of user answers
     created_at = Column(String, default=datetime.utcnow().isoformat())
     
     # Relationships

@@ -113,3 +113,21 @@ def get_user_profile(
         "phone": phone,
         "ao_details": ao_details
     }
+
+class QuestionnaireUpdate(schemas.BaseModel):
+    items: dict
+
+@router.put("/questionnaire")
+def update_questionnaire(
+    data: QuestionnaireUpdate,
+    current_user: models.User = Depends(auth_utils.get_current_user),
+    db: Session = Depends(database.get_db)
+):
+    try:
+        current_user.questionnaire_data = json.dumps(data.items)
+        db.add(current_user)
+        db.commit()
+        return {"status": "success", "message": "Profile updated successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+

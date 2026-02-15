@@ -1,32 +1,21 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { User, MapPin, Phone, Mail, Briefcase, Shield } from "lucide-react";
+import { User, MapPin, Phone, Mail, Briefcase, Shield, RefreshCw, Loader2 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { api } from "@/api/client";
-
-const profileData = {
-  fullName: "Rajesh Kumar Sharma",
-  pan: sessionStorage.getItem("abc_pan") || "ABCDE1234F",
-  dob: "15-Aug-1985",
-  age: 40,
-  address: "42, Sector 18, Dwarka, New Delhi – 110078",
-  phone: "+91 98765 43210",
-  email: "rajesh.sharma@email.com",
-  sourcesOfIncome: ["Salary", "House Property (Rental)", "Fixed Deposits"],
-  aoDetails: {
-    aoCode: "DEL-C-24(1)",
-    aoType: "Non-Corporate",
-    range: "Range 24(1)",
-    circle: "Circle 24",
-    ward: "Ward 24(1)",
-    city: "New Delhi",
-  },
-};
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 const Profile = () => {
   const [profileData, setProfileData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [isSyncDialogOpen, setIsSyncDialogOpen] = useState(false);
+  const [itrPassword, setItrPassword] = useState("");
+  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -73,6 +62,25 @@ const Profile = () => {
     fetchProfile();
   }, []);
 
+  const handleSync = async () => {
+    if (!itrPassword) {
+      toast.error("Please enter your ITR password");
+      return;
+    }
+    setIsSyncing(true);
+    try {
+      await api.triggerSync(itrPassword);
+      toast.success("Sync started! Your dashboard will update shortly.");
+      setIsSyncDialogOpen(false);
+      setItrPassword("");
+    } catch (error: any) {
+      console.error("Sync failed:", error);
+      toast.error(error.response?.data?.detail || "Failed to trigger sync");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   if (loading) {
     return <div className="flex h-screen items-center justify-center dark bg-background text-foreground">Loading Profile...</div>;
   }
@@ -89,14 +97,25 @@ const Profile = () => {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
+          className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4"
         >
-          <h1 className="font-display text-3xl font-bold">
-            <span className="gold-text-gradient">Profile</span>
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Your personal and tax-related details
-          </p>
+          <div>
+            <h1 className="font-display text-3xl font-bold">
+              <span className="gold-text-gradient">Profile</span>
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Your personal and tax-related details
+            </p>
+          </div>
+
+          <Button
+            onClick={() => setIsSyncDialogOpen(true)}
+            variant="outline"
+            className="border-gold/50 text-gold hover:bg-gold/10 hover:text-gold gap-2"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Refresh Data
+          </Button>
         </motion.div>
 
         <div className="grid gap-6 md:grid-cols-2">
@@ -183,6 +202,51 @@ const Profile = () => {
       </div>
 
       <Footer />
+
+      {/* Sync Dialog */}
+      <Dialog open={isSyncDialogOpen} onOpenChange={setIsSyncDialogOpen}>
+        <DialogContent className="sm:max-w-md bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">Refresh Tax Data</DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              To fetch the latest data from the Income Tax Portal, please enter your ITR password.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center space-x-2 py-4">
+            <div className="grid flex-1 gap-2">
+              <Label htmlFor="itr-password" className="sr-only">
+                ITR Password
+              </Label>
+              <Input
+                id="itr-password"
+                type="password"
+                placeholder="Enter ITR Password"
+                value={itrPassword}
+                onChange={(e) => setItrPassword(e.target.value)}
+                className="bg-background border-border text-foreground"
+              />
+            </div>
+          </div>
+          <DialogFooter className="sm:justify-start">
+            <Button
+              type="button"
+              variant="default"
+              className="gradient-gold text-primary-foreground"
+              onClick={handleSync}
+              disabled={isSyncing}
+            >
+              {isSyncing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Syncing...
+                </>
+              ) : (
+                "Sync Now"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

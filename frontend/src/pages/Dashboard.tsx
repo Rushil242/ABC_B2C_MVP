@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { TrendingUp, AlertTriangle, Calendar, FileText, Loader2, RefreshCw } from "lucide-react";
 import Navbar from "@/components/Navbar";
@@ -20,6 +21,7 @@ const Dashboard = () => {
   }>({ open: false });
   const [syncLoading, setSyncLoading] = useState(false);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['dashboard'],
@@ -27,34 +29,12 @@ const Dashboard = () => {
     retry: false
   });
 
-  const [syncDialog, setSyncDialog] = useState(false);
-  const [password, setPassword] = useState("");
-
-  const handleSyncClick = () => {
-    setSyncDialog(true);
-  };
-
-  const confirmSync = async () => {
-    if (!password) {
-      alert("Please enter password");
-      return;
+  // Check if questionnaire is completed
+  useEffect(() => {
+    if (data?.user && !data.user.questionnaire_data) {
+      navigate("/questionnaire");
     }
-    setSyncLoading(true);
-    setSyncDialog(false);
-    try {
-      await api.triggerSync(password);
-      setPassword(""); // Clear password
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-        setSyncLoading(false);
-        alert("Sync started! Data will update shortly.");
-      }, 2000);
-    } catch (e) {
-      console.error("Sync failed", e);
-      setSyncLoading(false);
-      alert("Failed to trigger sync: " + (e as any).response?.data?.detail || "Unknown error");
-    }
-  };
+  }, [data, navigate]);
 
   if (isLoading) {
     return (
@@ -64,7 +44,6 @@ const Dashboard = () => {
       </div>
     );
   }
-
   if (error || !data) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background text-foreground flex-col">
@@ -76,6 +55,9 @@ const Dashboard = () => {
   }
 
   const { user, risks, opportunities, advance_tax, tds_tcs } = data;
+
+  // Check if questionnaire is completed
+
 
   // ... (Mappings remain same)
   const missedOpportunities = opportunities.map((op: any) => ({
@@ -149,14 +131,7 @@ const Dashboard = () => {
             <h1 className="font-display text-2xl font-bold">
               Welcome, <span className="text-gold">{fullName}</span>
             </h1>
-            <button
-              onClick={handleSyncClick}
-              disabled={syncLoading}
-              className="flex items-center gap-2 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-gold rounded-lg transition-colors disabled:opacity-50"
-            >
-              {syncLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              {syncLoading ? "Syncing..." : "Sync Data"}
-            </button>
+
           </div>
 
           <div className="mt-3 grid gap-1.5 text-sm text-muted-foreground sm:grid-cols-2 md:grid-cols-4">
@@ -366,44 +341,6 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Sync Dialog */}
-      <Dialog open={syncDialog} onOpenChange={setSyncDialog}>
-        <DialogContent className="dark border-border bg-card text-foreground">
-          <DialogHeader>
-            <DialogTitle>Enter Portal Credentials</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Please enter your Income Tax Portal password to proceed.
-              Your PAN ({pan}) will be used as the username.
-            </p>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                placeholder="Enter password"
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setSyncDialog(false)}
-                className="px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground rounded-md"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmSync}
-                className="px-4 py-2 text-sm font-medium bg-gold text-black hover:bg-gold/90 rounded-md"
-              >
-                Start Sync
-              </button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Solutions Dialog */}
       <Dialog
