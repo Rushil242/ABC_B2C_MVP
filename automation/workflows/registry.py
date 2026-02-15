@@ -1,11 +1,14 @@
 from workflows.filed_returns import FiledReturnsWorkflow
+from workflows.form_26as import Form26ASWorkflow
+from workflows.ais_download import AISDownloadWorkflow
+from workflows.eproceedings import EProceedingsWorkflow
 
 # Registry of all available workflows
 WORKFLOWS = {
     'filed_returns': FiledReturnsWorkflow,
-    # Add more workflows here as you create them
-    # 'tax_payments': TaxPaymentsWorkflow,
-    # 'form_26as': Form26ASWorkflow,
+    'form_26as': Form26ASWorkflow,
+    'ais_download': AISDownloadWorkflow,
+    'eproceedings': EProceedingsWorkflow,
 }
 
 def list_workflows():

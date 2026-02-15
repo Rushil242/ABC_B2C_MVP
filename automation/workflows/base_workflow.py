@@ -2,6 +2,16 @@ from playwright.sync_api import sync_playwright, Page
 from pathlib import Path
 import json
 import config
+import os
+try:
+    from google import genai
+    from google.genai import types
+    from PIL import Image
+    GEMINI_AVAILABLE = True
+    print("[DEBUG] Gemini and PIL imported successfully")
+except ImportError as e:
+    GEMINI_AVAILABLE = False
+    print(f"[WARNING] google-genai or Pillow not installed: {e}")
 
 class BaseWorkflow:
     """Base class for all income tax website workflows"""
@@ -33,7 +43,7 @@ class BaseWorkflow:
         context = self.browser.new_context(
             accept_downloads=True,
             user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            viewport={'width': 1920, 'height': 1080},
+            viewport={'width': 1366, 'height': 768},
             locale='en-US'
         )
         context.add_init_script("""
@@ -159,6 +169,89 @@ class BaseWorkflow:
     def execute(self):
         """Override this method in subclasses"""
         raise NotImplementedError("Subclasses must implement execute()")
+    
+    def handle_captcha_if_present(self):
+        """Check for CAPTCHA and solve using Gemini"""
+        captcha_canvas = self.page.query_selector('canvas#captcahCanvas')
+        if not captcha_canvas:
+            captcha_canvas = self.page.query_selector('canvas')
+        
+        if captcha_canvas:
+            print("[CAPTCHA] CAPTCHA detected!")
+            
+            if not GEMINI_AVAILABLE:
+                print("[CAPTCHA] Gemini not available. Please solve manually.")
+                self.page.wait_for_timeout(30000)
+                return False
+            
+            try:
+                print("[CAPTCHA] Attempting to solve with Gemini...")
+                
+                # Wait for canvas to render
+                self.page.wait_for_timeout(2000)
+                
+                # Screenshot the captcha
+                captcha_path = f"{self.workflow_dir}/captcha.png"
+                captcha_canvas.screenshot(path=captcha_path)
+                
+                # Verify screenshot is not blank
+                from PIL import Image as PILImage
+                img_check = PILImage.open(captcha_path)
+                if img_check.getbbox() is None:
+                    print("[CAPTCHA] Canvas screenshot is blank, taking full page screenshot")
+                    self.page.screenshot(path=captcha_path)
+                
+                # Use Gemini to read the captcha
+                client = genai.Client(api_key=os.getenv('GEMINI_API_KEY'))
+                with open(captcha_path, 'rb') as f:
+                    img_data = f.read()
+                
+                response = client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=[
+                        types.Part.from_bytes(data=img_data, mime_type='image/png'),
+                        "Read the text in this captcha image. Return only the text with no spaces between characters."
+                    ]
+                )
+                captcha_text = response.text.strip().replace(' ', '')
+                
+                print(f"[CAPTCHA] Detected text: {captcha_text}")
+                
+                # Find and fill captcha input field
+                captcha_input = self.page.query_selector('input#captchaInput')
+                if not captcha_input:
+                    captcha_input = self.page.query_selector('input[type="text"]')
+                
+                if captcha_input:
+                    captcha_input.fill(captcha_text)
+                    self.page.wait_for_timeout(1000)
+                    print("[CAPTCHA] Filled captcha text")
+                    
+                    # Click Proceed button (not Cancel)
+                    proceed_btn = self.page.query_selector('button.btn-primary:has-text("Proceed")')
+                    if not proceed_btn:
+                        # Try finding all buttons and click the one with Proceed text
+                        all_buttons = self.page.query_selector_all('button')
+                        for btn in all_buttons:
+                            if 'proceed' in btn.inner_text().lower():
+                                proceed_btn = btn
+                                break
+                    
+                    if proceed_btn:
+                        print("[CAPTCHA] Clicking Proceed button")
+                        with self.page.expect_download(timeout=10000) as dl:
+                            proceed_btn.click()
+                        download = dl.value
+                        return download
+                    
+                    return True
+            except Exception as e:
+                print(f"[CAPTCHA] Gemini failed: {str(e)[:100]}")
+                print("[CAPTCHA] Falling back to manual solving. Please solve the CAPTCHA.")
+                self.page.wait_for_timeout(30000)
+                return False
+        
+        return False
     
     def cleanup(self):
         """Save results and close browser"""
