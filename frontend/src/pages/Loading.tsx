@@ -28,7 +28,7 @@ const Loading = () => {
       setCurrentStep((prev) => {
         if (prev >= steps.length - 1) {
           if (intervalRef.current) clearInterval(intervalRef.current);
-          setTimeout(() => navigate("/questionnaire"), 800);
+          setTimeout(() => navigate("/dashboard"), 800);
           return prev;
         }
         return prev + 1;
@@ -81,8 +81,8 @@ const Loading = () => {
                   i < currentStep
                     ? "text-gold"
                     : i === currentStep
-                    ? "text-foreground"
-                    : "text-muted-foreground"
+                      ? "text-foreground"
+                      : "text-muted-foreground"
                 }
               >
                 {i < currentStep ? "✓" : i === currentStep ? "●" : "○"}
@@ -92,8 +92,8 @@ const Loading = () => {
                   i < currentStep
                     ? "text-muted-foreground"
                     : i === currentStep
-                    ? "text-foreground font-medium"
-                    : "text-muted-foreground"
+                      ? "text-foreground font-medium"
+                      : "text-muted-foreground"
                 }
               >
                 {step}
