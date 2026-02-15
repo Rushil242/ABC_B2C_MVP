@@ -74,6 +74,18 @@ class DataNormalizer:
         form_type = next(iter(itr_root)) if itr_root else "Unknown"
         form_data = itr_root.get(form_type, {})
 
+        # Default Values
+        gross_total_income = 0.0
+        tax_payable = 0.0
+        tax_paid = 0.0
+        hp_income = 0.0
+        stcg = 0.0
+        ltcg = 0.0
+        ded_80c = 0.0
+        ded_80d = 0.0
+        ded_80ccd = 0.0
+        tds_claimed = 0.0
+        
         # --- MAPPING LOGIC (Supports ITR-1, ITR-2, ITR-4) ---
         
         # 1. Basic Info
@@ -149,18 +161,44 @@ class DataNormalizer:
 # 3. Risk Engine (The Muscle)
 # ==========================================
 
+from .ai_engine import AIEngine
+
 class RiskEngine:
     def __init__(self, itr: RawITR, ais: RawAIS):
         self.itr = itr
         self.ais = ais
         self.risks = []
+        self.ai = AIEngine() # Initialize AI Engine
 
-    def execute(self) -> List[RiskResult]:
+    def execute(self) -> List["RiskResult"]:
         self._check_rental_mismatch()
         self._check_capital_gains_misclass()
         self._check_tds_mismatch()
         self._check_high_income_disclosure()
         self._check_tax_liability_mismatch()
+        
+        # Enrich with AI Explanations
+        for risk in self.risks:
+            try:
+                # Generate specific explanation
+                explanation = self.ai.generate_risk_explanation({
+                    "title": risk.title,
+                    "description": risk.description,
+                    "amount_involved": risk.amount_involved,
+                    "severity": risk.severity
+                })
+                
+                # Add as a solution/insight
+                # risk.solutions is stored as JSON string in RiskResult.__init__
+                current_solutions = json.loads(risk.solutions)
+                current_solutions.append(f"AI Insight: {explanation}")
+                risk.solutions = json.dumps(current_solutions)
+                
+            except Exception as e:
+                print(f"AI Enrichment Error: {e}")
+                # Continue without AI insight
+                pass
+                
         return self.risks
 
     def _check_rental_mismatch(self):
@@ -278,7 +316,58 @@ class OpportunityEngine:
             ))
 
 # ==========================================
-# 5. Public API Functions (Accessed by Service)
+# 5. Tax Calendar Engine (New)
+# ==========================================
+
+from datetime import date
+
+class TaxCalendarEngine:
+    def __init__(self, itr: RawITR):
+        self.itr = itr
+        self.schedule = []
+
+    def execute(self) -> List[Dict]:
+        """
+        Generates the 4-quarter schedule based on estimated tax liability.
+        """
+        # Estimate current year liability (Simple projection: Last year + 10%)
+        estimated_tax = self.itr.tax_paid * 1.10 
+        
+        # Current FY is (Current Year - 1) to (Current Year) if today is before April?
+        # Typically Advance Tax is for the *current* Financial Year.
+        # Assuming code runs in FY 2024-25.
+        today = date.today()
+        # Logic to determine FY (Simplistic for MVP)
+        year = today.year if today.month > 3 else today.year - 1
+        
+        deadlines = [
+            {"quarter": "Q1", "due_date": f"{year}-06-15", "percent": 0.15},
+            {"quarter": "Q2", "due_date": f"{year}-09-15", "percent": 0.45},
+            {"quarter": "Q3", "due_date": f"{year}-12-15", "percent": 0.75},
+            {"quarter": "Q4", "due_date": f"{year+1}-03-15", "percent": 1.00},
+        ]
+        
+        results = []
+        for item in deadlines:
+            amount = estimated_tax * item['percent']
+            
+            # Simple status check
+            status = "Upcoming"
+            if today.strftime("%Y-%m-%d") > item['due_date']:
+                status = "Overdue"
+            
+            results.append({
+                "quarter": item['quarter'],
+                "section": "234C",
+                "due_date": item['due_date'],
+                "amount": round(amount, 2),
+                "status": status,
+                "reminder": f"Pay {int(item['percent']*100)}% of tax by {item['due_date']}"
+            })
+        return results
+
+# ==========================================
+# 6. Public API Functions (Accessed by Service)
 # ==========================================
 
 def evaluate_risks(itr_json: dict, ais_data: list = None) -> list:
@@ -321,4 +410,16 @@ def evaluate_opportunities(itr_json: dict) -> list:
         
     except Exception as e:
         print(f"Opp Engine Error: {e}")
+        return []
+
+def evaluate_tax_calendar(itr_json: dict) -> list:
+    """
+    Main Entry Point for Tax Calendar/Advance Tax.
+    """
+    try:
+        raw_itr = DataNormalizer.normalize_itr(itr_json)
+        engine = TaxCalendarEngine(raw_itr)
+        return engine.execute()
+    except Exception as e:
+        print(f"Tax Calendar Error: {e}")
         return []

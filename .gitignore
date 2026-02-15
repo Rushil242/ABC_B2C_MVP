@@ -36,3 +36,7 @@ backend/test_*.py
 backend/verify_*.py
 backend/debug_*.py
 backend/force_delete_db.py
+populate_ais.py
+reprocess_rules.py
+check_db_integration.py
+verification_output.txt

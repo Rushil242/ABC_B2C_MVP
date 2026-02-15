@@ -79,14 +79,40 @@ def process_itr_data(db: Session, pan: str, itr_json: dict):
             tax_payable = float(part_b_tti.get("NetTaxLiability", 0))
             refund = part_b_tti.get("Refund", {}).get("RefundDue", "0")
 
-        # Upsert User Name if available
+        # Upsert User Name & DOB if available (Trust ITR data over registration data)
         user = db.query(models.User).filter(models.User.pan == pan).first()
         if user and personal_info:
-             if not user.name or user.name == "Scraped User":
-                first = personal_info.get("AssesseeName", {}).get("FirstName", "")
-                last = personal_info.get("AssesseeName", {}).get("SurNameOrOrgName", "")
-                user.name = f"{first} {last}".strip()
-                db.add(user)
+            # Name
+            first = personal_info.get("AssesseeName", {}).get("FirstName", "")
+            mid = personal_info.get("AssesseeName", {}).get("MiddleName", "")
+            last = personal_info.get("AssesseeName", {}).get("SurNameOrOrgName", "")
+            
+            full_name = f"{first} {mid} {last}".replace("  ", " ").strip()
+            if full_name:
+                user.name = full_name
+            
+            # DOB
+            dob = personal_info.get("DOB")
+            if dob:
+                # Ensure format is DD-MM-YYYY or YYYY-MM-DD? User model expects String?
+                # DB model usually String. ITR JSON DOB is usually YYYY-MM-DD or DD/MM/YYYY
+                # Registration used DD-MM-YYYY.
+                # Let's just save what we get, or normalize?
+                # Frontend expects DD-MM-YYYY for Age calc?
+                # Frontend code: const [d, m, y] = dob.split('-');
+                # So it expects DD-MM-YYYY.
+                # If ITR has YYYY-MM-DD, frontend breaks.
+                # I should normalize to DD-MM-YYYY.
+                try:
+                    if "-" in dob:
+                        parts = dob.split("-")
+                        if len(parts[0]) == 4: # YYYY-MM-DD
+                             dob = f"{parts[2]}-{parts[1]}-{parts[0]}"
+                except:
+                    pass
+                user.dob = dob
+            
+            db.add(user)
 
         # Upsert ITR Filing
         # Use acknowledgement number as the unique identifier
@@ -125,31 +151,78 @@ def process_itr_data(db: Session, pan: str, itr_json: dict):
             db.add(new_itr)
         
         # Run Rule Engine
-        risks = rule_engine.evaluate_risks(itr_json)
+        
+        # 1. Fetch AIS Data for Risk Analysis (AY 2024-25 -> FY 2023-24)
+        ais_entries = []
+        try:
+            # Parse AY (e.g., "2024-25" -> 2024, or "2024" -> 2024)
+            if ay and ay != "Unknown":
+                # Clean AY (remove 'PAY ' prefix if any, mainly handling simple year)
+                ay_str = ay.split("-")[0].strip()
+                if ay_str.isdigit():
+                    ay_year = int(ay_str)
+                    fy_year = ay_year - 1
+                    fy = f"{fy_year}-{str(ay_year)[-2:]}"
+                    
+                    ais_records = db.query(models.AIS_Entry).filter(
+                        models.AIS_Entry.user_pan == pan,
+                        models.AIS_Entry.fy == fy
+                    ).all()
+                    
+                    # Convert SQLAlchemy objects to list of dicts
+                    for entry in ais_records:
+                        ais_entries.append({
+                            "informationCategory": entry.category,
+                            "amount": entry.amount,
+                            "description": entry.description,
+                            "source": entry.source
+                        })
+        except Exception as e:
+            logging.warning(f"Could not fetch AIS data for Rule Engine: {e}")
+
+        risks = rule_engine.evaluate_risks(itr_json, ais_entries)
         for risk in risks:
             # Dedup: Check if this risk title exists for this user/AY?
-            # Risk model doesn't have AY. We should check if exact risk exists.
             exists = db.query(models.Risk).filter(
                 models.Risk.user_pan == pan,
-                models.Risk.title == risk['title'],
-                models.Risk.description == risk['description']
+                models.Risk.ay == ay,
+                models.Risk.title == risk['title']
             ).first()
             if not exists:
-                db.add(models.Risk(user_pan=pan, **risk))
+                db.add(models.Risk(user_pan=pan, ay=ay, **risk))
             
         opps = rule_engine.evaluate_opportunities(itr_json)
         for opp in opps:
             exists = db.query(models.Opportunity).filter(
                 models.Opportunity.user_pan == pan,
-                models.Opportunity.title == opp['title'],
-                models.Opportunity.description == opp['description']
+                models.Opportunity.ay == ay,
+                models.Opportunity.title == opp['title']
             ).first()
             if not exists:
-                db.add(models.Opportunity(user_pan=pan, **opp))
+                db.add(models.Opportunity(user_pan=pan, ay=ay, **opp))
+        
+        # 4. Generate Advance Tax Schedule (New)
+        adv_tax_schedule = rule_engine.evaluate_tax_calendar(itr_json)
+        for tax in adv_tax_schedule:
+            # Dedup based on quarter and section
+            exists = db.query(models.AdvanceTax).filter(
+                models.AdvanceTax.user_pan == pan,
+                models.AdvanceTax.quarter == tax['quarter'],
+                models.AdvanceTax.section == tax['section']
+            ).first()
+            
+            if exists:
+                # Update amount/status if changed
+                exists.amount = str(tax['amount'])
+                exists.status = tax['status']
+                exists.due_date = tax['due_date']
+                exists.reminder = tax.get('reminder', '')
+            else:
+                db.add(models.AdvanceTax(user_pan=pan, **tax))
 
         db.commit()
         return True, "Processed successfully"
-
+    
     except Exception as e:
         logging.error(f"Error processing ITR: {e}")
         db.rollback()
