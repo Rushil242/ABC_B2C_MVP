@@ -15,7 +15,11 @@ router = APIRouter(
     tags=["Automation"]
 )
 
-PROJECT_ROOT = r"c:\Users\abhay\Documents\VSCode\ABC_B2C_MVP"
+# Determine PROJECT_ROOT dynamically to work on any machine
+# sync.py is in backend/routers/ -> go up 2 levels
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+BACKEND_DIR = os.path.dirname(CURRENT_DIR)
+PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
 AUTOMATION_DIR = os.path.join(PROJECT_ROOT, "automation")
 DOWNLOAD_DIR = os.path.join(AUTOMATION_DIR, "downloads", "filedreturns")
 
