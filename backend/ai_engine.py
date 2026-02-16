@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- CONFIGURATION ---
-MODEL_NAME = "gemini-3.0-flash" 
+MODEL_NAME = "gemini-1.5-flash" 
 
 class AIEngine:
     def __init__(self):
@@ -25,31 +25,43 @@ class AIEngine:
             genai.configure(api_key=api_key)
             self.model = genai.GenerativeModel(MODEL_NAME)
 
-    def generate_risk_explanation(self, risk: dict) -> str:
+    def generate_risk_explanation(self, risk_data: dict, user_profile: dict = None) -> str:
         """
-        Uses Gemini to write a 2-sentence explanation for a specific risk.
-        Input: A dictionary from rule_engine (title, amount, severity).
-        Output: A string explanation.
+        Uses Gemini to write a personalized explanation based on user profile.
         """
         if not self.model:
-            return f"{risk['description']} (AI Explanation Unavailable)"
+            return f"{risk_data['description']} (AI Explanation Unavailable)"
 
         try:
+            # Extract Context from Profile
+            profile_context = "Standard Client"
+            if user_profile:
+                risk_appetite = user_profile.get('risk', 'Balanced')
+                horizon = user_profile.get('horizon', 'Medium-Term')
+                profile_context = f"Risk Appetite: {risk_appetite}, Planning Horizon: {horizon}"
+
             prompt = f"""
             Role: Expert Tax Consultant.
             Task: Write a 1-sentence explanation for this tax risk.
-            Risk: {risk['title']}
-            Technical Reason: {risk['description']}
-            Amount: ₹{risk['amount_involved']}
             
-            Output: Explain strictly why this is risky and what the user should check. Do not add greetings.
+            Client Profile: {profile_context}
+            
+            Risk Data:
+            - Title: {risk_data['title']}
+            - Tech Detail: {risk_data['description']}
+            - Amount: ₹{risk_data['amount_involved']}
+            
+            Instructions:
+            - If Client is 'Conservative', emphasize safety and compliance.
+            - If Client is 'Aggressive', emphasize strategic correction.
+            - Be professional and direct.
             """
             
             response = self.model.generate_content(prompt)
             return response.text.strip()
         except Exception as e:
             logger.error(f"AI Error: {e}")
-            return risk['description']
+            return risk_data['description']
 
     def summarize_notice_text(self, ocr_text: str) -> dict:
         """

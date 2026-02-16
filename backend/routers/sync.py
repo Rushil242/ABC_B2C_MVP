@@ -9,7 +9,7 @@ import os
 import glob
 import json
 import logging
-
+import sys
 router = APIRouter(
     prefix="/api/sync",
     tags=["Automation"]
@@ -41,7 +41,7 @@ def bg_sync_workflow(user_pan: str, password: str):
         
         # run_workflow.py filed_returns --headless
         result = subprocess.run(
-            ["python", "run_workflow.py", "filed_returns", "--headless"],
+            [sys.executable, "run_workflow.py", "filed_returns", "--headless"],
             cwd=AUTOMATION_DIR,
             capture_output=True,
             text=True,
