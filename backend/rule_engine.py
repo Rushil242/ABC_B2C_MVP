@@ -1,6 +1,7 @@
 import json
 import logging
 from typing import List, Dict, Optional
+from datetime import date
 
 # ==========================================
 # 1. Data Models (Standardized Objects)
@@ -24,14 +25,15 @@ class RawITR:
         self.deductions_80ccd_1b = float(deductions_80ccd_1b)
         self.tds_claimed = float(tds_claimed)
         self.residential_status = residential_status # "RES" or "NRI"
-        self.opt_out_new_regime = opt_out_new_regime # "Y" (Old) or "N" (New) - *Varies by year/form*
+        self.opt_out_new_regime = opt_out_new_regime # "Y" (Old) or "N" (New)
 
 class RawAIS:
     """Standardized AIS Data Object"""
-    def __init__(self, rent_received=0, total_tds_deposited=0, sale_of_securities=None):
+    def __init__(self, rent_received=0, total_tds_deposited=0, sale_of_securities=None, interest_income=0):
         self.rent_received = float(rent_received)
         self.total_tds_deposited = float(total_tds_deposited)
         self.sale_of_securities = sale_of_securities if sale_of_securities else []
+        self.interest_income = float(interest_income) # Savings + FD Interest
 
 class RiskResult:
     """Standard Output for Risks"""
@@ -104,9 +106,7 @@ class DataNormalizer:
             ded_80c = get_val([f"{form_type}_IncomeDeductions", "UsrDeductUndChapVIA", "Section80C"], form_data)
             tds_claimed = get_val(["TDS", "TotalTDSClaimed"], form_data)
             
-            # Status Flags (Location varies, checking common paths)
             res_status = get_str(["FilingStatus", "ResidentialStatus"], form_data, "RES")
-            # ITR-1 often assumes Resident. Check for 115BAC flag if available
             opt_out_new = get_str(["FilingStatus", "OptOutNewTaxRegime"], form_data, "N")
             
         else:
@@ -126,8 +126,6 @@ class DataNormalizer:
             
             tds_claimed = get_val(["ScheduleTDS1", "TotalTDSClaimed"], form_data)
             
-            # Status Flags
-            # Usually in PartA_GEN1 -> FilingStatus
             filing_stat = form_data.get("PartA_GEN1", {}).get("FilingStatus", {})
             res_status = filing_stat.get("ResidentialStatus", "RES")
             opt_out_new = filing_stat.get("OptOutNewTaxRegime", "N")
@@ -156,10 +154,15 @@ class DataNormalizer:
             try:
                 category = entry.get("informationCategory", "") or entry.get("infoCategory", "")
                 amount = float(entry.get("amount", 0) or 0)
+                
                 if "Rent received" in category:
                     ais.rent_received += amount
                 elif "TDS" in category or "Tax Deducted" in category:
                     ais.total_tds_deposited += amount
+                # --- NEW: Interest Income Check ---
+                elif "Interest from savings" in category or "Interest from deposits" in category:
+                    ais.interest_income += amount
+                # ----------------------------------
                 elif "Sale of securities" in category or "SFT-017" in category:
                     ais.sale_of_securities.append(entry)
             except Exception:
@@ -181,13 +184,15 @@ class RiskEngine:
         self.ai = AIEngine()
 
     def execute(self) -> List["RiskResult"]:
+        # Standard Math Checks
         self._check_rental_mismatch()
         self._check_capital_gains_misclass()
-        self._check_tds_mismatch()
+        self._check_tds_mismatch() # Covers Under & Over Claim
+        self._check_interest_mismatch() # New Check
         self._check_high_income_disclosure()
         self._check_tax_liability_mismatch()
         
-        # New Questionnaire-based Checks
+        # Questionnaire Checks
         self._check_residential_status_mismatch()
         self._check_declared_income_sources()
 
@@ -208,7 +213,7 @@ class RiskEngine:
                 current_solutions.append(f"AI Insight: {explanation}")
                 risk.solutions = json.dumps(current_solutions)
             except Exception as e:
-                pass # AI fail shouldn't crash math
+                pass 
                 
         return self.risks
 
@@ -242,6 +247,7 @@ class RiskEngine:
             ))
 
     def _check_tds_mismatch(self):
+        # 1. Under-Claim (You lost money)
         if self.ais.total_tds_deposited > (self.itr.tds_claimed + 1000):
             diff = self.ais.total_tds_deposited - self.itr.tds_claimed
             self.risks.append(RiskResult(
@@ -251,6 +257,30 @@ class RiskEngine:
                 amount_involved=diff,
                 solutions=["Update ITR to claim full TDS", "Check Form 26AS"]
             ))
+            
+        # 2. Over-Claim (You claimed too much - DANGEROUS)
+        elif self.itr.tds_claimed > (self.ais.total_tds_deposited + 1000):
+            diff = self.itr.tds_claimed - self.ais.total_tds_deposited
+            self.risks.append(RiskResult(
+                title="Mismatch in TDS claimed vs Form 26AS",
+                severity="High",
+                description=f"TDS amount claimed ₹{diff:,.0f} more than reflected in 26AS.",
+                amount_involved=diff,
+                solutions=["Revise Return immediately", "Pay the difference with interest", "Check for manual Challan entries"]
+            ))
+
+    def _check_interest_mismatch(self):
+        # Check if AIS Interest exists but Total Income is suspiciously low or missing 'Other Sources' logic
+        # For MVP, if AIS Interest > 0 and Total Income < AIS Interest (Implying it wasn't added)
+        if self.ais.interest_income > 5000:
+             if self.itr.total_income < self.ais.interest_income:
+                 self.risks.append(RiskResult(
+                    title="Interest income not declared",
+                    severity="High",
+                    description=f"FD/Savings interest of ₹{self.ais.interest_income:,.0f} from AIS not reported in ITR.",
+                    amount_involved=self.ais.interest_income,
+                    solutions=["Add Income from Other Sources", "Check Savings/FD Interest statement"]
+                ))
 
     def _check_high_income_disclosure(self):
         if self.itr.total_income > 5000000:
@@ -273,32 +303,20 @@ class RiskEngine:
                 solutions=["Pay Self-Assessment Tax", "Check for challan mismatch"]
             ))
 
-    # --- NEW QUESTIONNAIRE LOGIC ---
+    # --- QUESTIONNAIRE CHECKS ---
     def _check_residential_status_mismatch(self):
-        """Checks if User Profile matches ITR Filing Status"""
         user_status = self.profile.get("residentialStatus", "")
-        # ITR Codes: RES (Resident), NRI (Non-Resident)
         if user_status == "NRI" and "RES" in self.itr.residential_status:
              self.risks.append(RiskResult(
                 title="Residential Status Mismatch",
                 severity="High",
-                description="You identified as NRI in the questionnaire, but your ITR was filed as Resident. This impacts global income taxation.",
+                description="You identified as NRI in the questionnaire, but your ITR was filed as Resident.",
                 amount_involved=0,
                 solutions=["File Revised Return as NRI", "Check 182-day rule"]
             ))
 
     def _check_declared_income_sources(self):
-        """Checks if user declared sources in Questionnaire that are missing in ITR"""
         sources = self.profile.get("income_sources", [])
-        
-        # Check Business
-        if "Business / Profession" in sources and self.itr.total_income > 0:
-            # Need strict check. For MVP, if ITR-1 is used, Business is likely missing (ITR-1 can't have business)
-            # Or if we had business income extracted. (Not extracted in MVP RawITR yet).
-            # We can infer from Form Type.
-            pass 
-
-        # Check Capital Gains
         if "Capital Gains (Stocks/Property)" in sources:
             total_cg = self.itr.capital_gains_ltcg + self.itr.capital_gains_stcg
             if total_cg == 0:
@@ -321,20 +339,13 @@ class OpportunityEngine:
         self.opportunities = []
 
     def execute(self) -> List[OpportunityResult]:
-        # FILTER: If "New Regime", 80C and 80D are not available.
-        # Check Profile first (User Intent), then ITR (Actual Filing).
         user_regime = self.profile.get("newRegime", "")
         is_new_regime = "New Regime" in user_regime
         
-        # If User explicitly says New Regime, SKIP 80C/80D suggestions
         if not is_new_regime:
             self._check_80c()
             self._check_80d()
-        
-        # NPS 80CCD(1B) is also NOT allowed in New Regime usually (only Employer contrib is).
-        if not is_new_regime:
-             self._check_nps()
-             
+            self._check_nps()
         return self.opportunities
 
     def _check_80c(self):
@@ -343,7 +354,7 @@ class OpportunityEngine:
         if gap > 5000:
             self.opportunities.append(OpportunityResult(
                 title="Maximize 80C Deductions",
-                description=f"You have claimed ₹{self.itr.deductions_80c:,.0f} out of ₹1.5L. Invest remaining to save tax (Old Regime).",
+                description=f"You have claimed ₹{self.itr.deductions_80c:,.0f} out of ₹1.5L. Invest remaining to save tax.",
                 potential_savings=gap * 0.30,
                 opp_code="OPP_80C"
             ))
@@ -370,12 +381,44 @@ class OpportunityEngine:
 # 5. Public API Functions
 # ==========================================
 
+class TaxCalendarEngine:
+    def __init__(self, itr: RawITR):
+        self.itr = itr
+        self.schedule = []
+
+    def execute(self) -> List[Dict]:
+        estimated_tax = self.itr.tax_paid * 1.10 
+        today = date.today()
+        year = today.year if today.month > 3 else today.year - 1
+        
+        deadlines = [
+            {"quarter": "Q1", "due_date": f"{year}-06-15", "percent": 0.15},
+            {"quarter": "Q2", "due_date": f"{year}-09-15", "percent": 0.45},
+            {"quarter": "Q3", "due_date": f"{year}-12-15", "percent": 0.75},
+            {"quarter": "Q4", "due_date": f"{year+1}-03-15", "percent": 1.00},
+        ]
+        
+        results = []
+        for item in deadlines:
+            amount = estimated_tax * item['percent']
+            status = "Upcoming"
+            if today.strftime("%Y-%m-%d") > item['due_date']:
+                status = "Overdue"
+            
+            results.append({
+                "quarter": item['quarter'],
+                "section": "234C",
+                "due_date": item['due_date'],
+                "amount": round(amount, 2),
+                "status": status,
+                "reminder": f"Pay {int(item['percent']*100)}% of tax by {item['due_date']}"
+            })
+        return results
+
 def evaluate_risks(itr_json: dict, ais_data: list = None, user_profile: dict = None) -> list:
     try:
         raw_itr = DataNormalizer.normalize_itr(itr_json)
         raw_ais = DataNormalizer.normalize_ais(ais_data if ais_data else [])
-        
-        # Pass user_profile to Engine
         engine = RiskEngine(raw_itr, raw_ais, user_profile)
         risk_objects = engine.execute()
         return [vars(r) for r in risk_objects]
@@ -386,7 +429,6 @@ def evaluate_risks(itr_json: dict, ais_data: list = None, user_profile: dict = N
 def evaluate_opportunities(itr_json: dict, user_profile: dict = None) -> list:
     try:
         raw_itr = DataNormalizer.normalize_itr(itr_json)
-        # Pass user_profile to Engine
         engine = OpportunityEngine(raw_itr, user_profile)
         opp_objects = engine.execute()
         return [vars(o) for o in opp_objects]
@@ -394,11 +436,7 @@ def evaluate_opportunities(itr_json: dict, user_profile: dict = None) -> list:
         print(f"Opp Engine Error: {e}")
         return []
 
-# evaluate_tax_calendar remains same...
 def evaluate_tax_calendar(itr_json: dict) -> list:
-    """
-    Main Entry Point for Tax Calendar/Advance Tax.
-    """
     try:
         raw_itr = DataNormalizer.normalize_itr(itr_json)
         engine = TaxCalendarEngine(raw_itr)
