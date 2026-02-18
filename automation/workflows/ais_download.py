@@ -11,12 +11,25 @@ class AISDownloadWorkflow(BaseWorkflow):
         # Click AIS tab
         print("[INFO] Looking for 'AIS' tab...")
         ais_tab = self.page.query_selector('text=/.*AIS.*/i')
+        
         if ais_tab:
             print("[INFO] Clicking AIS tab")
-            with self.page.context.expect_page() as new_page_info:
-                ais_tab.click()
-            self.page = new_page_info.value
-            print("[INFO] Switched to AIS tab")
+            
+            # Get current pages before click
+            pages_before = self.page.context.pages
+            
+            ais_tab.click()
+            self.page.wait_for_timeout(5000) # Wait for potential new tab
+            
+            # Check if a new page was opened
+            pages_after = self.page.context.pages
+            if len(pages_after) > len(pages_before):
+                new_page = pages_after[-1]
+                self.page = new_page
+                print("[INFO] Switched to new tab (AIS)")
+            else:
+                print("[INFO] No new tab detected, staying on current page")
+            
             self.page.wait_for_load_state("networkidle")
             self.page.wait_for_timeout(3000)
     

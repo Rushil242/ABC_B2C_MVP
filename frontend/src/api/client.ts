@@ -61,10 +61,43 @@ export const api = {
         const response = await client.get("/notices");
         return response.data;
     },
+
+    // Sync APIs
+    triggerAllSync: async (password: string) => {
+        const response = await client.post("/sync/all", { password });
+        return response.data;
+    },
     triggerSync: async (password: string) => {
+        // Default to ITR for backward compatibility or general sync
         const response = await client.post("/sync/itr", { password });
         return response.data;
     },
+    triggerITRSync: async (password: string) => {
+        const response = await client.post("/sync/itr", { password });
+        return response.data;
+    },
+    triggerAISSync: async (password: string) => {
+        const response = await client.post("/sync/ais", { password });
+        return response.data;
+    },
+    trigger26ASSync: async (password: string) => {
+        const response = await client.post("/sync/26as", { password });
+        return response.data;
+    },
+    triggerNoticesSync: async (password: string) => {
+        const response = await client.post("/sync/eproceedings", { password });
+        return response.data;
+    },
+    verifyCredentials: async (password: string) => {
+        const response = await client.post("/sync/verify", { password });
+        return response.data;
+    },
+
+    getSyncStatus: async () => {
+        const response = await client.get("/sync/status");
+        return response.data;
+    },
+
     updateProfileQuestionnaire: async (data: any) => {
         const response = await client.put("/profile/questionnaire", { items: data });
         return response.data;

@@ -1,5 +1,8 @@
+
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { useSync } from "@/context/SyncContext";
+import { Loader2 } from "lucide-react";
 
 interface NavItem {
   label: string;
@@ -14,6 +17,14 @@ const navItems: NavItem[] = [
 
 const Navbar = ({ isLoggedIn = false }: { isLoggedIn?: boolean }) => {
   const location = useLocation();
+  // Safe check for context in case Navbar is used outside provider (though App wraps it)
+  let isSyncing = false;
+  try {
+    const syncContext = useSync();
+    isSyncing = syncContext.isSyncing;
+  } catch (e) {
+    // ignore
+  }
 
   return (
     <nav className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md">
@@ -48,6 +59,12 @@ const Navbar = ({ isLoggedIn = false }: { isLoggedIn?: boolean }) => {
         <div className="flex items-center gap-3">
           {isLoggedIn ? (
             <>
+              {isSyncing && (
+                <div className="flex items-center gap-2 mr-2 px-3 py-1 bg-gold/10 rounded-full border border-gold/30">
+                  <Loader2 className="h-4 w-4 animate-spin text-gold" />
+                  <span className="text-xs text-gold font-medium hidden sm:inline">Syncing...</span>
+                </div>
+              )}
               <a
                 href="https://abcweb2.lovable.app"
                 target="_blank"

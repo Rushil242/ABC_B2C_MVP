@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -6,8 +7,7 @@ import { api } from "@/api/client";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { toast } from "sonner";
-
-
+import { useSync } from "@/context/SyncContext";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -15,8 +15,7 @@ const Login = () => {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-
-
+  const { startSync } = useSync();
 
   const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 
@@ -41,6 +40,15 @@ const Login = () => {
       const response = await api.login(upperPan, password);
       sessionStorage.setItem("auth_token", response.access_token);
       sessionStorage.setItem("abc_pan", upperPan);
+
+      // Auto-sync on login and cache password for session
+      sessionStorage.setItem("itr_password", password);
+      try {
+        startSync(password).catch(e => console.error("Auto-sync failed trigger", e));
+        toast.success("Background sync started automatically.");
+      } catch (e) {
+        console.error("Failed to trigger auto-sync", e);
+      }
 
       toast.success("Logged in successfully!");
       navigate("/dashboard");
@@ -106,9 +114,6 @@ const Login = () => {
                   className="w-full rounded-lg border border-border bg-background px-4 py-3 text-sm text-foreground focus:border-gold/50 focus:outline-none focus:ring-1 focus:ring-gold/30"
                 />
               </div>
-
-
-
 
               {error && (
                 <p className="text-sm text-destructive font-medium">{error}</p>

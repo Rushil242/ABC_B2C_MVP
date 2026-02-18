@@ -27,12 +27,25 @@ class Form26ASWorkflow(BaseWorkflow):
         # Click View Form 26AS
         print("[INFO] Looking for 'View Form 26AS'...")
         form_26as = self.page.query_selector('.cdk-overlay-container >> text=/.*view.*form.*26as.*/i')
+        
         if form_26as:
             print("[INFO] Clicking View Form 26AS")
-            with self.page.context.expect_page() as new_page_info:
-                form_26as.click(force=True)
-            self.page = new_page_info.value
-            print("[INFO] Switched to new tab")
+            
+            # Get current pages before click
+            pages_before = self.page.context.pages
+            
+            form_26as.click(force=True)
+            self.page.wait_for_timeout(5000)
+            
+            # Check if a new page was opened
+            pages_after = self.page.context.pages
+            if len(pages_after) > len(pages_before):
+                new_page = pages_after[-1]
+                self.page = new_page
+                print("[INFO] Switched to new tab")
+            else:
+                 print("[INFO] No new tab detected, staying on current page")
+                 
             self.page.wait_for_load_state("networkidle")
             self.page.wait_for_timeout(3000)
         

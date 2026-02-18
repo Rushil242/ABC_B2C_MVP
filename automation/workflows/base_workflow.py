@@ -1,3 +1,4 @@
+
 from playwright.sync_api import sync_playwright, Page
 from pathlib import Path
 import json
@@ -101,32 +102,74 @@ class BaseWorkflow:
                 break
         
         if continue_button:
-            continue_button.click()
+            print("[INFO] Clicking 'Continue' button...")
+            continue_button.click(force=True)
+            try:
+                self.page.wait_for_load_state("networkidle", timeout=5000)
+            except:
+                pass
             self.page.wait_for_timeout(2000)
         else:
+            print("[INFO] 'Continue' button not found, pressing Enter...")
             self.page.keyboard.press('Enter')
-            self.page.wait_for_timeout(2000)
+            self.page.wait_for_timeout(3000)
         
         # Step 2: Enter password
         print("[INFO] Looking for password field...")
+        try:
+             # Wait up to 10s for password field
+             self.page.wait_for_selector('input[type="password"]', state="visible", timeout=10000)
+        except Exception:
+             print("[WARNING] Password field not found immediately. Checking for checkboxes...")
+
         password_field = self.page.query_selector('input[type="password"]')
+        
+        # Check for checkboxes (Secure Access Message)
+        checkboxes = self.page.query_selector_all('input[type="checkbox"]')
+        if checkboxes:
+            print(f"[INFO] Found {len(checkboxes)} checkboxes. Checking unchecked ones...")
+            for i, checkbox in enumerate(checkboxes):
+                try:
+                    if not checkbox.is_checked():
+                        print(f"[INFO] Clicking checkbox {i}")
+                        checkbox.click(force=True)
+                        self.page.wait_for_timeout(500)
+                except Exception as e:
+                    print(f"[WARNING] Failed to click checkbox {i}: {e}")
+        
+        # Re-check for password field
         if not password_field:
+             password_field = self.page.query_selector('input[type="password"]')
+
+        # DEBUGGING: If still no password field, dump info
+        if not password_field:
+            print(f"[DEBUG] Current URL: {self.page.url}")
+            print(f"[DEBUG] Page Title: {self.page.title()}")
+            
+            # Print all inputs found
+            all_inputs = self.page.query_selector_all('input')
+            print(f"[DEBUG] Found {len(all_inputs)} inputs on page:")
+            for inp in all_inputs:
+                try:
+                    # Sync safe way to get attributes
+                    js = "el => el.getAttributeNames().reduce((acc, name) => ({...acc, [name]: el.getAttribute(name)}), {})"
+                    attrs = inp.evaluate(js)
+                    print(f" - Input: {attrs}")
+                except:
+                    print(" - Input: (failed to read attributes)")
+            
+            # Print visible text (truncated)
+            try:
+                visible_text = self.page.inner_text('body')
+                print(f"[DEBUG] Page Text Preview:\n{visible_text[:500]}...")
+            except:
+                print("[DEBUG] Could not get page text")
+
             raise Exception("Password field not found")
         
         print("[INFO] Filling password")
         password_field.fill(config.PASSWORD)
         self.page.wait_for_timeout(1000)
-        
-        # Check for checkboxes
-        checkboxes = self.page.query_selector_all('input[type="checkbox"]')
-        if checkboxes:
-            for checkbox in checkboxes:
-                try:
-                    if not checkbox.is_checked():
-                        checkbox.click(force=True)
-                except:
-                    pass
-            self.page.wait_for_timeout(1000)
         
         # Click Continue
         all_buttons = self.page.query_selector_all('button, input[type="submit"], a.btn, [role="button"]')
@@ -148,7 +191,7 @@ class BaseWorkflow:
         
         self.page.wait_for_timeout(3000)
         
-        # Handle session modal
+        # Handle session modal (login here)
         modal_text = self.page.query_selector('text=/.*session.*active.*/i')
         if modal_text:
             print("[INFO] Session modal detected")

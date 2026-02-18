@@ -36,11 +36,6 @@ class VerifyCredentialsWorkflow(BaseWorkflow):
                 
                 if not user_name:
                     # Try profile icon/text
-                    # Look for something that looks like a name (uppercase usually)
-                    # This is hard to guess reliably.
-                    # Let's try to navigate to Profile if possible? 
-                    # Navigating might take time.
-                    # Let's just return what we have or None.
                     pass
 
             except Exception as e:
@@ -52,10 +47,12 @@ class VerifyCredentialsWorkflow(BaseWorkflow):
             }
             print(f"[DATA] {json.dumps(result)}")
             
+            # Add to self.data so it gets written to results.json
+            self.data.append(result)
+            
         except Exception as e:
              # Login failed or other error
              print(f"[ERROR] Verification failed: {e}")
              # We rely on BaseWorkflow to handle severe errors, but here we print JSON for failure
              print(f"[DATA] {json.dumps({'status': 'error', 'message': str(e)})}")
              raise e
-
