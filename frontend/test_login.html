@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login Test</title>
+</head>
+
+<body>
+    <h1>Login Test</h1>
+    <button onclick="testFormData()">Test FormData (Current Implementation)</button>
+    <button onclick="testURLSearchParams()">Test URLSearchParams (Proposed Fix)</button>
+    <div id="result"></div>
+
+    <script>
+        const BASE_URL = 'http://127.0.0.1:8000/api/auth/login';
+
+        async function testFormData() {
+            const formData = new FormData();
+            formData.append('username', 'ABCDE1234F');
+            formData.append('password', 'demo123');
+
+            try {
+                // Simulating the current implementation using fetch
+                const response = await fetch(BASE_URL, {
+                    method: 'POST',
+                    body: formData,
+                    // Note: In the actual code, they manually set Content-Type to x-www-form-urlencoded
+                    // while passing FormData. If we do that here, browser might complain or send bad data.
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    }
+                });
+                const text = await response.text();
+                document.getElementById('result').innerText = `FormData Result: ${response.status} - ${text}`;
+            } catch (e) {
+                document.getElementById('result').innerText = `FormData Error: ${e}`;
+            }
+        }
+
+        async function testURLSearchParams() {
+            const params = new URLSearchParams();
+            params.append('username', 'ABCDE1234F');
+            params.append('password', 'demo123');
+
+            try {
+                const response = await fetch(BASE_URL, {
+                    method: 'POST',
+                    body: params,
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    }
+                });
+                const text = await response.text();
+                document.getElementById('result').innerText = `URLSearchParams Result: ${response.status} - ${text}`;
+            } catch (e) {
+                document.getElementById('result').innerText = `URLSearchParams Error: ${e}`;
+            }
+        }
+    </script>
+</body>
+
+</html>

@@ -10,6 +10,30 @@ router = APIRouter(
     tags=["Profile"]
 )
 
+@router.delete("/me")
+def delete_account(
+    current_user: models.User = Depends(auth_utils.get_current_user),
+    db: Session = Depends(database.get_db)
+):
+    try:
+        # Delete related data manually since cascade might not be configured in DB
+        # Deleting in order of dependencies (leaves first)
+        db.query(models.Risk).filter(models.Risk.user_pan == current_user.pan).delete()
+        db.query(models.Opportunity).filter(models.Opportunity.user_pan == current_user.pan).delete()
+        db.query(models.ITR_Filing).filter(models.ITR_Filing.user_pan == current_user.pan).delete()
+        db.query(models.AIS_Entry).filter(models.AIS_Entry.user_pan == current_user.pan).delete()
+        db.query(models.AdvanceTax).filter(models.AdvanceTax.user_pan == current_user.pan).delete()
+        db.query(models.TDS_Entry).filter(models.TDS_Entry.user_pan == current_user.pan).delete()
+        db.query(models.Notice).filter(models.Notice.user_pan == current_user.pan).delete()
+        
+        # Delete User
+        db.delete(current_user)
+        db.commit()
+        return {"status": "success", "message": "Account deleted successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("", response_model=schemas.UserProfile)
 def get_user_profile(
     current_user: models.User = Depends(auth_utils.get_current_user),
@@ -27,9 +51,15 @@ def get_user_profile(
     dob = current_user.dob or "N/A"
     
     ao_details = {
-        "aoCode": "N/A", "aoType": "N/A", "range": "N/A", 
-        "circle": "N/A", "ward": "N/A", "city": "N/A"
+        "area_code": "N/A", "ao_type": "N/A", "range_code": "N/A", 
+        "ao_num": "N/A", "city": "N/A", "jurisdiction": "N/A"
     }
+    
+    if current_user.ao_details:
+        try:
+             saved_ao = json.loads(current_user.ao_details)
+             ao_details.update(saved_ao)
+        except: pass
 
     if itr and itr.raw_data:
         try:
@@ -127,7 +157,33 @@ def update_questionnaire(
         current_user.questionnaire_data = json.dumps(data.items)
         db.add(current_user)
         db.commit()
+        
+        # Re-run Rules to update Dashboard immediately
+        from ..services import itr_service
+        itr_service.run_rules_for_user(db, current_user.pan)
+        
         return {"status": "success", "message": "Profile updated successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+class AODetailsUpdate(schemas.BaseModel):
+    area_code: str
+    ao_type: str
+    range_code: str
+    ao_num: str
+    city: str
+    jurisdiction: str = ""
+
+@router.put("/ao-details")
+def update_ao_details(
+    details: AODetailsUpdate,
+    current_user: models.User = Depends(auth_utils.get_current_user),
+    db: Session = Depends(database.get_db)
+):
+    try:
+        current_user.ao_details = json.dumps(details.dict())
+        db.add(current_user)
+        db.commit()
+        return {"status": "success", "message": "AO Details updated successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

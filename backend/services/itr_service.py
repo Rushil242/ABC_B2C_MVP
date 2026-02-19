@@ -173,28 +173,22 @@ def run_rules_for_user(db: Session, pan: str):
             pass
 
         # 4. Run Rule Engine - Risks (PASS USER PROFILE)
+        # Standard: Clear old risks for this AY/User before adding new ones
+        db.query(models.Risk).filter(models.Risk.user_pan == pan, models.Risk.ay == ay).delete()
+        
         risks = rule_engine.evaluate_risks(itr_json, ais_entries, user_profile=user_profile)
         
         for risk in risks:
-            exists = db.query(models.Risk).filter(
-                models.Risk.user_pan == pan,
-                models.Risk.ay == ay,
-                models.Risk.title == risk['title']
-            ).first()
-            if not exists:
-                db.add(models.Risk(user_pan=pan, ay=ay, **risk))
+            db.add(models.Risk(user_pan=pan, ay=ay, **risk))
 
         # 5. Run Rule Engine - Opportunities (PASS USER PROFILE)
+        # Clear old opportunities
+        db.query(models.Opportunity).filter(models.Opportunity.user_pan == pan, models.Opportunity.ay == ay).delete()
+
         opps = rule_engine.evaluate_opportunities(itr_json, user_profile=user_profile)
         
         for opp in opps:
-            exists = db.query(models.Opportunity).filter(
-                models.Opportunity.user_pan == pan,
-                models.Opportunity.ay == ay,
-                models.Opportunity.title == opp['title']
-            ).first()
-            if not exists:
-                db.add(models.Opportunity(user_pan=pan, ay=ay, **opp))
+            db.add(models.Opportunity(user_pan=pan, ay=ay, **opp))
         
         db.commit()
         logging.info(f"Rule Engine executed for {pan}")

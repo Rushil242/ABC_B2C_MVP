@@ -89,7 +89,13 @@ def process_ais_data(db: Session, pan: str, ais_data: dict):
             count_ais += 1
 
         db.commit()
+        db.commit()
         logging.info(f"Ingested {count_ais} AIS entries and {count_tds} TDS entries.")
+        
+        # Trigger Rule Engine
+        from . import itr_service
+        itr_service.run_rules_for_user(db, pan)
+        
         return True, f"Synced {count_ais} records."
 
     except Exception as e:

@@ -51,7 +51,7 @@ const Login = () => {
       }
 
       toast.success("Logged in successfully!");
-      navigate("/dashboard");
+      navigate("/questionnaire");
 
     } catch (err: any) {
       console.error(err);

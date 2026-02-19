@@ -10,15 +10,38 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useNavigate } from "react-router-dom";
 import { useSync } from "@/context/SyncContext";
 
 const Profile = () => {
+  const navigate = useNavigate();
   const [profileData, setProfileData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isSyncDialogOpen, setIsSyncDialogOpen] = useState(false);
   const [itrPassword, setItrPassword] = useState("");
   const [activeSync, setActiveSync] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // AO Edit State
+  const [isAOEditDialogOpen, setIsAOEditDialogOpen] = useState(false);
+  const [aoForm, setAOForm] = useState({
+    area_code: "", ao_type: "", range_code: "", ao_num: "", city: "", jurisdiction: ""
+  });
+
+  const handleAOSave = async () => {
+    try {
+      await api.updateAODetails(aoForm);
+      toast.success("AO Details Updated");
+      setIsAOEditDialogOpen(false);
+      // Update local state
+      setProfileData((prev: any) => ({
+        ...prev,
+        aoDetails: { ...prev.aoDetails, ...aoForm }
+      }));
+    } catch (e) {
+      toast.error("Failed to update AO Details");
+    }
+  };
 
   // Global Sync Context
   const { isSyncing, syncStatus, startSync } = useSync();
@@ -48,6 +71,18 @@ const Profile = () => {
           sourcesOfIncome: ["Salary", "House Property", "Other Sources"],
           aoDetails: data.ao_details
         });
+
+        // Prefill Form
+        if (data.ao_details) {
+          setAOForm({
+            area_code: data.ao_details.area_code || "",
+            ao_type: data.ao_details.ao_type || "",
+            range_code: data.ao_details.range_code || "",
+            ao_num: data.ao_details.ao_num || "",
+            city: data.ao_details.city || "",
+            jurisdiction: data.ao_details.jurisdiction || ""
+          });
+        }
       } catch (error) {
         console.error("Failed to fetch profile", error);
       } finally {
@@ -186,16 +221,101 @@ const Profile = () => {
           </motion.div>
 
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="rounded-2xl border border-border bg-card p-6">
-            <div className="flex items-center gap-2 mb-5">
-              <Shield className="h-5 w-5 text-gold" />
-              <h2 className="font-display text-lg font-semibold">AO Details</h2>
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-2">
+                <Shield className="h-5 w-5 text-gold" />
+                <h2 className="font-display text-lg font-semibold">AO Details</h2>
+              </div>
+              <Dialog open={isAOEditDialogOpen} onOpenChange={setIsAOEditDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground hover:text-gold">
+                    Edit
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="dark border-border bg-card text-foreground">
+                  <h2 className="font-display text-lg font-semibold mb-4">Edit Jurisdiction Details</h2>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Area Code</Label>
+                      <Input value={aoForm.area_code} onChange={(e) => setAOForm({ ...aoForm, area_code: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>AO Type</Label>
+                      <Input value={aoForm.ao_type} onChange={(e) => setAOForm({ ...aoForm, ao_type: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Range Code</Label>
+                      <Input value={aoForm.range_code} onChange={(e) => setAOForm({ ...aoForm, range_code: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>AO Number</Label>
+                      <Input value={aoForm.ao_num} onChange={(e) => setAOForm({ ...aoForm, ao_num: e.target.value })} />
+                    </div>
+                    <div className="col-span-2 space-y-2">
+                      <Label>City</Label>
+                      <Input value={aoForm.city} onChange={(e) => setAOForm({ ...aoForm, city: e.target.value })} />
+                    </div>
+                    <div className="col-span-2 space-y-2">
+                      <Label>Jurisdiction</Label>
+                      <Input value={aoForm.jurisdiction} onChange={(e) => setAOForm({ ...aoForm, jurisdiction: e.target.value })} />
+                    </div>
+                  </div>
+                  <Button onClick={handleAOSave} className="mt-4 w-full bg-gold text-black hover:bg-gold/90">Save Details</Button>
+                </DialogContent>
+              </Dialog>
             </div>
-            <div className="space-y-4">
-              <InfoRow label="AO Code" value={profileData.aoDetails.aoCode} highlight />
-              <InfoRow label="AO Type" value={profileData.aoDetails.aoType} />
-              <InfoRow label="City" value={profileData.aoDetails.city} />
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-muted-foreground">Area Code</p>
+                <p className="font-medium">{profileData.aoDetails.area_code || "N/A"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">AO Type</p>
+                <p className="font-medium">{profileData.aoDetails.ao_type || "N/A"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Range Code</p>
+                <p className="font-medium">{profileData.aoDetails.range_code || "N/A"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">AO Number</p>
+                <p className="font-medium">{profileData.aoDetails.ao_num || "N/A"}</p>
+              </div>
+              <div className="col-span-2">
+                <p className="text-xs text-muted-foreground">Jurisdiction</p>
+                <p className="font-medium truncate">{profileData.aoDetails.jurisdiction || "N/A"}</p>
+              </div>
             </div>
           </motion.div>
+        </div>
+
+        {/* Danger Zone */}
+        <div className="mt-8 rounded-2xl border border-red-200 bg-red-50/50 p-6 dark:border-red-900/30 dark:bg-red-900/10">
+          <h2 className="text-lg font-semibold text-red-600 dark:text-red-400">Danger Zone</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Irreversible actions for your account.
+          </p>
+          <div className="mt-4">
+            <button
+              onClick={async () => {
+                if (window.confirm("Are you sure you want to delete your account? This action cannot be undone and will remove all your scraped data locally.")) {
+                  try {
+                    await api.deleteAccount();
+                    sessionStorage.clear();
+                    toast.success("Account deleted successfully");
+                    navigate("/");
+                  } catch (e) {
+                    toast.error("Failed to delete account");
+                    console.error(e);
+                  }
+                }
+              }}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors"
+            >
+              Delete Account
+            </button>
+          </div>
         </div>
       </div>
 

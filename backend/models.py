@@ -13,6 +13,7 @@ class User(Base):
     email = Column(String)
     dob = Column(String) # DD-MM-YYYY format to match frontend
     questionnaire_data = Column(Text) # JSON string of user answers
+    ao_details = Column(Text) # JSON string: {area_code, ao_type, range_code, ao_num, city, jurisdiction}
     created_at = Column(String, default=datetime.utcnow().isoformat())
     
     # Relationships

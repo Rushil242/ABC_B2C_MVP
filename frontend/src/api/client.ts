@@ -23,15 +23,16 @@ client.interceptors.request.use((config) => {
 export const api = {
     login: async (pan: string, password: string, questionnaireData?: any) => {
         // Backend expects form-data for OAuth2PasswordRequestForm
-        const formData = new FormData();
-        formData.append('username', pan);
-        formData.append('password', password);
+        // We use URLSearchParams to ensure application/x-www-form-urlencoded header is set correctly
+        const params = new URLSearchParams();
+        params.append('username', pan);
+        params.append('password', password);
 
         if (questionnaireData) {
-            formData.append('questionnaire_data', JSON.stringify(questionnaireData));
+            params.append('questionnaire_data', JSON.stringify(questionnaireData));
         }
 
-        const response = await client.post('/auth/login', formData, {
+        const response = await client.post('/auth/login', params, {
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded'
             }
@@ -100,6 +101,11 @@ export const api = {
 
     updateProfileQuestionnaire: async (data: any) => {
         const response = await client.put("/profile/questionnaire", { items: data });
+        return response.data;
+    },
+
+    deleteAccount: async () => {
+        const response = await client.delete("/profile/me");
         return response.data;
     },
 };
