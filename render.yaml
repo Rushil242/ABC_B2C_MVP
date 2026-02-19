@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: abc-tax-platform
+    env: docker
+    plan: free
+    dockerContext: .
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: PYTHON_VERSION
+        value: 3.10.0

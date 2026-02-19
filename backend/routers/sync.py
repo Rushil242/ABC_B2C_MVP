@@ -46,10 +46,6 @@ def run_automation_workflow(workflow_name: str, user_pan: str, password: str, db
     logging.info(f"Starting {workflow_name} Workflow for {user_pan}")
     
     # 1. Run Scraper
-    if os.getenv("VERCEL"):
-        logging.error("Automation/Scraping is not supported on Vercel Serverless environment.")
-        return False, "Sync is disabled on this demo environment (Vercel)."
-
     try:
         env = os.environ.copy()
         env["INCOME_TAX_USERNAME"] = user_pan
